@@ -50,6 +50,7 @@ members = [
     "readyset-tracing",
     "readyset-util",
     "readyset-version",
+    "readyset-vitess-data",
     "replicators",
     "proptest-stateful",
     "system-benchmarks",
