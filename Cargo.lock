@@ -5143,7 +5143,9 @@ name = "readyset-vitess-data"
 version = "0.0.1"
 dependencies = [
  "anyhow",
+ "mysql-time",
  "readyset-data",
+ "rust_decimal",
  "vitess-grpc",
 ]
 
