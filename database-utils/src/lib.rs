@@ -22,12 +22,14 @@ use crate::error::DatabaseURLParseError;
 
 mod connection;
 pub mod error;
+pub mod vitess_config;
 
 pub use connection::{
     DatabaseConnection, DatabaseConnectionPool, DatabaseStatement, QueryResults,
     QueryableConnection, Transaction,
 };
 pub use error::DatabaseError;
+pub use vitess_config::VitessConfig;
 
 #[allow(missing_docs)] // If we add docs they get added into --help binary text which is confusing
 #[derive(Debug, Clone, Parser, PartialEq, Eq, Serialize, Deserialize)]
@@ -154,9 +156,12 @@ pub enum DatabaseType {
 
     #[value(name = "postgresql")]
     PostgreSQL,
+
+    #[value(name = "vitess")]
+    Vitess,
 }
 
-/// Parses the strings `"mysql"` and `"postgresql"`, case-insensitively
+/// Parses the database type strings (e.g. `"mysql"`, `"postgresql"`, etc) case-insensitively
 ///
 /// # Examples
 ///
@@ -173,6 +178,9 @@ pub enum DatabaseType {
 /// let my: DatabaseType = "mysql".parse().unwrap();
 /// assert_eq!(my, DatabaseType::MySQL);
 ///
+/// let vt: DatabaseType = "vitess".parse().unwrap();
+/// assert_eq!(vt, DatabaseType::Vitess);
+///
 /// assert!("pgsql".parse::<DatabaseType>().is_err());
 /// ```
 impl FromStr for DatabaseType {
@@ -181,6 +189,7 @@ impl FromStr for DatabaseType {
         match s.to_lowercase().as_str() {
             "mysql" => Ok(Self::MySQL),
             "postgresql" | "postgres" => Ok(Self::PostgreSQL),
+            "vitess" => Ok(Self::Vitess),
             _ => Err(DatabaseTypeParseError {
                 value: s.to_owned(),
             }),
@@ -188,20 +197,23 @@ impl FromStr for DatabaseType {
     }
 }
 
-/// Displays as either `MySQL` or PostgreSQL
+/// Displays database type as a string (e.g `MySQL`, PostgreSQL, etc)
 ///
 /// # Examples
 ///
 /// ```
 /// use database_utils::DatabaseType;
 ///
+/// assert_eq!(DatabaseType::MySQL.to_string(), "mysql");
 /// assert_eq!(DatabaseType::PostgreSQL.to_string(), "postgresql");
+/// assert_eq!(DatabaseType::Vitess.to_string(), "vitess");
 /// ```
 impl Display for DatabaseType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             DatabaseType::MySQL => f.write_str("mysql"),
             DatabaseType::PostgreSQL => f.write_str("postgresql"),
+            DatabaseType::Vitess => f.write_str("vitess"),
         }
     }
 }
@@ -216,6 +228,7 @@ impl Display for DatabaseType {
 pub enum DatabaseURL {
     MySQL(mysql_async::Opts),
     PostgreSQL(pgsql::Config),
+    Vitess(VitessConfig),
 }
 
 /// Parses URLs starting with either `"mysql://"` or `"postgresql://"`.
@@ -251,6 +264,8 @@ impl FromStr for DatabaseURL {
                 Some(_) => Ok(result),
                 None => Err(DatabaseURLParseError::MissingPostgresDbName),
             }
+        } else if s.starts_with("vitess://") {
+            Ok(Self::Vitess(VitessConfig::from_str(s)?))
         } else {
             Err(DatabaseURLParseError::InvalidFormat)
         }
@@ -289,6 +304,9 @@ impl DatabaseURL {
                 let connection_handle =
                     tokio::spawn(async move { connection.await.map_err(Into::into) });
                 Ok(DatabaseConnection::PostgreSQL(client, connection_handle))
+            }
+            DatabaseURL::Vitess(_config) => {
+                todo!()
             }
         }
     }
@@ -332,6 +350,9 @@ impl DatabaseURL {
                     },
                 )),
             )),
+            DatabaseURL::Vitess(_config) => {
+                todo!()
+            }
         }
     }
 
@@ -390,6 +411,9 @@ impl DatabaseURL {
                     tokio::spawn(async move { connection.await.map_err(Into::into) });
                 Ok(DatabaseConnection::PostgreSQL(client, connection_handle))
             }
+            DatabaseURL::Vitess(_config) => {
+                todo!()
+            }
         }
     }
 
@@ -399,6 +423,7 @@ impl DatabaseURL {
         match self {
             DatabaseURL::MySQL(_) => DatabaseType::MySQL,
             DatabaseURL::PostgreSQL(_) => DatabaseType::PostgreSQL,
+            DatabaseURL::Vitess(_) => DatabaseType::Vitess,
         }
     }
 
@@ -407,6 +432,7 @@ impl DatabaseURL {
         match self {
             DatabaseURL::MySQL(opts) => opts.user(),
             DatabaseURL::PostgreSQL(config) => config.get_user(),
+            DatabaseURL::Vitess(config) => Some(&config.username),
         }
     }
 
@@ -421,6 +447,7 @@ impl DatabaseURL {
             DatabaseURL::PostgreSQL(opts) => opts.get_password().map(|p| -> &str {
                 str::from_utf8(p).expect("PostgreSQL URL configured with non-utf8 password")
             }),
+            DatabaseURL::Vitess(config) => Some(&config.password),
         }
     }
 
@@ -443,6 +470,7 @@ impl DatabaseURL {
                     pgsql::config::Host::Unix(p) => p.to_str().expect("Invalid UTF-8 in host"),
                 }
             }
+            DatabaseURL::Vitess(config) => &config.host,
         }
     }
 
@@ -451,10 +479,11 @@ impl DatabaseURL {
         match self {
             DatabaseURL::MySQL(opts) => opts.db_name(),
             DatabaseURL::PostgreSQL(config) => config.get_dbname(),
+            DatabaseURL::Vitess(config) => Some(&config.keyspace),
         }
     }
 
-    /// Sets the underlying database nname.
+    /// Sets the underlying database name.
     pub fn set_db_name(&mut self, db_name: String) {
         match self {
             DatabaseURL::MySQL(opts) => {
@@ -464,6 +493,9 @@ impl DatabaseURL {
             }
             DatabaseURL::PostgreSQL(config) => {
                 config.dbname(&db_name);
+            }
+            DatabaseURL::Vitess(config) => {
+                config.keyspace = db_name;
             }
         }
     }
@@ -481,6 +513,7 @@ impl DatabaseURL {
         match self {
             Self::PostgreSQL(_) => Dialect::PostgreSQL,
             Self::MySQL(_) => Dialect::MySQL,
+            Self::Vitess(_) => Dialect::MySQL,
         }
     }
 }

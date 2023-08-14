@@ -40,6 +40,7 @@ impl Backend {
                         .build(noria, Some(upstream), query_status_cache),
                 ))
             }
+            DatabaseURL::Vitess(_) => todo!(),
         }
     }
 
