@@ -537,7 +537,8 @@ impl Connector for PostgresWalConnector {
                     cur_lsn.into(),
                 ));
             } else if let Some(until) = until && actions.is_empty() && ReplicationOffset::from(cur_lsn) >= *until {
-                return Ok((ReplicationAction::LogPosition, cur_lsn.into()));
+                let pos: ReplicationOffset = cur_lsn.into();
+                return Ok((ReplicationAction::LogPosition, pos));
             }
 
             trace!(?event);
