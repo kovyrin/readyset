@@ -42,6 +42,7 @@ members = [
     "readyset-mir",
     "readyset-mysql",
     "readyset-psql",
+    "readyset-vitess",
     "readyset-repl",
     "readyset-server",
     "readyset-sql-passes",
